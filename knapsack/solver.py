@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from numba import njit
 import pandas as pd
 from tqdm import tqdm
 
@@ -22,9 +23,9 @@ def parse_data(input_data):
     pairs = [x.split() for x in lines[1:]]  
     values, weights = unzip(pairs)         
 
-    # convert from str to int
-    values = [int(v) for v in values]
-    weights = [int(w) for w in weights]
+    # convert from list of str to np.array of int
+    values = np.array([int(v) for v in values])
+    weights = np.array([int(w) for w in weights])
 
     return values, weights, capacity
 
@@ -49,7 +50,7 @@ def greedy_select(values, weights, K):
 
     return total_value, item_selections
 
-
+@njit()
 def dp_select(values, weights, capacity):
     """Use dynamic programming to build up to solution for all items"""
     
@@ -62,7 +63,11 @@ def dp_select(values, weights, capacity):
     values_table = np.zeros((K+1,n+1), dtype=np.uint32)
     
     print("building DP optimal-value table for n,K: ", n, ",", K)
-    for j in tqdm(range(1, n+1)):
+    print("Tracking Progress. j(n) = ....\n-------------------")
+    for j in range(1, n+1):
+        if j % 20 == 0:
+            print(j)
+            
         item_weight = weights[j-1]
         item_value  = values[j-1]
         for k in range(1, K+1):
@@ -71,7 +76,7 @@ def dp_select(values, weights, capacity):
             else:
                 values_table[k,j] = max(values_table[k, j-1], item_value + values_table[k-item_weight, j-1])
     optimal_value = values_table[-1, -1]
-    print(f"optimal value is {optimal_value}. Now proceeding to derive final item-set")
+    #print(f"optimal value is {optimal_value}. Now proceeding to derive final item-set")
 
     # from this table of optimal values, we now need to derive final item-set for optimal solution
     # logic of code below explained 12:30 - 14:00 at https://www.coursera.org/learn/discrete-optimization/lecture/wFFdN/knapsack-4-dynamic-programming
@@ -91,7 +96,9 @@ def solve_it(input_data):
     (values, weights, K) = parse_data(input_data)
     
     # value-dense greedy algorithm for filling the knapsack
+    start = pd.Timestamp.utcnow()
     obj, item_selections = dp_select(values, weights, K)
+    print(f"completed dp_select() in {pd.Timestamp.utcnow() - start}")
 
     # prepare the solution in the specified output format
     PROVED_OPTIMAL = 1
