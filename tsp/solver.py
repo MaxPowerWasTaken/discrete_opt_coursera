@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import math
+import numpy as np
 from collections import namedtuple
+from sklearn.metrics import pairwise_distances
 
-Point = namedtuple("Point", ['x', 'y'])
+#Point = namedtuple("Point", ['x', 'y'])
 
 def length(point1, point2):
     return math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2)
@@ -33,40 +35,19 @@ def solve_it(input_data):
 
     # Calculate distance matrix & initial route
     distance_matrix = get_dist_matrix(input_data)
-    s0 = greedy_salesman(distance_matrix)
+    s0 = greedy_salesman(distance_matrix.copy())  # if pass this w/o .copy(), distance_matrix actually is changed up here.
 
+    # Improve tour
     final_tour = s0
-    # Format output for course greader
-    total_dist = sum([distance_matrix[i,i+1] for i in final_tour[:-1]], distance_matrix[final_tour[-1], final_tour[0]])
-    proved_opt = 0
-    # ISSUE: 
 
+    # Calculate total-distance traveled of final tour
+    total_dist = sum([distance_matrix[i,j] for i,j in zip(final_tour[:-1], final_tour[1:])])
+    total_dist += distance_matrix[final_tour[-1], final_tour[0]]
 
+    # Format output as desired by course grader
+    proved_opt=0
     output_data = f'{total_dist:.2f} {proved_opt}\n'
-    output_data += ' '.join(final_tour)#map(str, solution))
-
-    return output_data
-
-    # parse the input
-    points = []
-    for i in range(1, nodeCount+1):
-        line = lines[i]
-        parts = line.split()
-        points.append(Point(float(parts[0]), float(parts[1])))
-
-    # build a trivial solution
-    # visit the nodes in the order they appear in the file
-    solution = range(0, nodeCount)
-
-    # calculate the length of the tour
-    obj = length(points[solution[-1]], points[solution[0]])
-    for index in range(0, nodeCount-1):
-        obj += length(points[solution[index]], points[solution[index+1]])
-
-    # prepare the solution in the specified output format
-    output_data = '%.2f' % obj + ' ' + str(0) + '\n'
-    output_data += ' '.join(map(str, solution))
-
+    output_data += ' '.join(map(str, final_tour))
     return output_data
 
 
