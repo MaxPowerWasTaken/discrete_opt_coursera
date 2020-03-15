@@ -9,14 +9,45 @@ Point = namedtuple("Point", ['x', 'y'])
 def length(point1, point2):
     return math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2)
 
+
+def get_dist_matrix(input_data):
+    lines = input_data.split('\n')
+    xypairs = [i.split() for i in lines[1:-1]]  # first line is num-points, last line is blank
+    dist_matrix = pairwise_distances(xypairs, metric='euclidean')
+    return dist_matrix
+
+
+def greedy_salesman(distance_matrix):
+    '''Generate a tour by drawing edges to closest remaining point, for each point in succession'''
+    visited = [0]
+    for i in range(distance_matrix.shape[0]-1):
+        current_pt = visited[-1]
+        dist_to_alternatives = distance_matrix[current_pt]
+        dist_to_alternatives[visited] = np.inf  # can't select a point we've already visited
+        next_pt = np.argmin(dist_to_alternatives)
+        visited.append(next_pt)
+    assert len(visited) == len(distance_matrix)
+    return visited
+
 def solve_it(input_data):
-    # Modify this code to run your optimization algorithm
+
+    # Calculate distance matrix & initial route
+    distance_matrix = get_dist_matrix(input_data)
+    s0 = greedy_salesman(distance_matrix)
+
+    final_tour = s0
+    # Format output for course greader
+    total_dist = sum([distance_matrix[i,i+1] for i in final_tour[:-1]], distance_matrix[final_tour[-1], final_tour[0]])
+    proved_opt = 0
+    # ISSUE: 
+
+
+    output_data = f'{total_dist:.2f} {proved_opt}\n'
+    output_data += ' '.join(final_tour)#map(str, solution))
+
+    return output_data
 
     # parse the input
-    lines = input_data.split('\n')
-
-    nodeCount = int(lines[0])
-
     points = []
     for i in range(1, nodeCount+1):
         line = lines[i]
