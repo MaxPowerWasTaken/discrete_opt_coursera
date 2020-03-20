@@ -48,14 +48,20 @@ class createnode:
 
     def traverse(self, path = []):
         paths=[[]]
+        counter=0
         path.append(self.nodeid)
         if len(self.child) == 0:
             print(path)
+            paths[counter] = path
+            print(paths)
+            counter+=1
             path.pop()
         else:
             for child in self.child:
                 child.traverse(path)
             path.pop()
+
+        return paths
 
 # QUESTION WITH TREES:
     # do we need to calc dist at each node? or should we just
@@ -118,6 +124,17 @@ def solve_it(input_data, input_filename, n_starts=10):
     # Calculate distance matrix & initial route
     distance_matrix = get_dist_matrix(input_data)
 
+    # Starting towards a better initial solution using heuristic search trees
+    # (WIP - not done)
+    ROOT_NODE = 0
+    root = createnode(ROOT_NODE)
+    children = [createnode(node) for node in get_closest_nodes(0, distance_matrix, n=2)]
+    
+    root.child += children 
+    paths = root.traverse()  # prints full paths.
+    print(paths)
+    import sys; sys.exit(0)
+
     # Greedy Solution
     N = int(input_data.split('\n')[0])
     best_tour = []
@@ -130,15 +147,6 @@ def solve_it(input_data, input_filename, n_starts=10):
             lowest_dist = soln_dist
             best_tour = greedy_tour
     
-    # Starting towards a better initial solution using heuristic search trees
-    # (WIP - not done)
-    ROOT_NODE = 0
-    root = createnode(ROOT_NODE)
-    children = [createnode(node) for node in get_closest_nodes(0, distance_matrix, n=2)]
-    
-    root.child += children 
-    root.traverse()  # prints full paths.
-
     # Format output as desired by course grader
     proved_opt=0
     output_data = f'{lowest_dist:.2f} {proved_opt}\n'
