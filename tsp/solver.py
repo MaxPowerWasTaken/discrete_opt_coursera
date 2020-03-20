@@ -30,6 +30,80 @@ def greedy_salesman(distance_matrix, startnode=0):
     return visit_order
 
 
+def get_closest_nodes(current_pt, dist_matrix, n, exclude=[]):
+    dist_to_alternatives = dist_matrix[current_pt].copy()
+    dist_to_alternatives[exclude + [current_pt]] = np.inf
+    neighbors_idx = np.argpartition(dist_to_alternatives, n)[:n]  # thanks https://stackoverflow.com/a/34226816/1870832
+    return neighbors_idx
+
+
+class createnode:
+    """ thanks to https://stackoverflow.com/a/51911296/1870832"""
+    def __init__(self,nodeid):
+        self.nodeid=nodeid
+        self.child=[]
+    
+    def __str__(self):
+        print(f"{self.nodeid}")
+
+    def traverse(self, path = []):
+        paths=[[]]
+        path.append(self.nodeid)
+        if len(self.child) == 0:
+            print(path)
+            path.pop()
+        else:
+            for child in self.child:
+                child.traverse(path)
+            path.pop()
+
+# QUESTION WITH TREES:
+    # do we need to calc dist at each node? or should we just
+    # create structure, then take all paths, then calc distances
+    # for all those paths
+        # leaning second way
+
+    # Second issue: arbitrary num levels and arbitrary num neighbors?
+        # hm num-levels probably handled by caller that constructs tree
+        # hum neighbors is num branches, so tree needs to handle arb number
+            # but really in practice would only use 2 or 3?
+
+
+def heuristic_search_salesman(distance_matrix, startnode=0, n_closest=2, n_levels=2):
+    '''At each node, consider a few closest next steps, then a few from there, etc.
+        - Choose immediate next step which is on the way to best outcome gamed out n steps forward
+        - See for ref Sec 8.9 "Reinforcement Learning," by Sutton and Barto
+
+    params
+    ------
+    distance_matrix: self-explanatory
+    startnode:       node to start the tour at 
+    n_closest:       At each node, consider for next step this many (closest) nodes
+    n_levels:        Plan this many levels/steps ahead before choosing next step
+    drop_worst:      (NOT IMPLEMENTED) If True, do not consider in plan branches off worst node considered at each level 
+    '''
+    visit_order = [startnode]
+    for i in range(distance_matrix.shape[0]-1):  # i is the tour position we're deciding now
+        current_pt = visit_order[-1]
+
+        # for each path need to track: 1) nodes along path, 2) agg distance
+        subpath=[current_pt]
+        subpath_dist = 0
+        subpath_results = {}
+
+
+
+
+"""
+           node=0
+         /   |   \
+        33   5    32     lvl = 0 (of 0,1,2)
+      / | \ 
+    26  22  5 - how to recurse...
+  / | \
+  5 6  7f
+"""
+
 def calc_tour_dist(tour_order, dist_matrix):
 
     # dist-matrix entry between each consecutive pair of stops in tour_order.
@@ -40,10 +114,11 @@ def calc_tour_dist(tour_order, dist_matrix):
 
 
 def solve_it(input_data, input_filename, n_starts=10):
-    
+
     # Calculate distance matrix & initial route
     distance_matrix = get_dist_matrix(input_data)
 
+    # Greedy Solution
     N = int(input_data.split('\n')[0])
     best_tour = []
     lowest_dist = np.inf
@@ -55,6 +130,15 @@ def solve_it(input_data, input_filename, n_starts=10):
             lowest_dist = soln_dist
             best_tour = greedy_tour
     
+    # Starting towards a better initial solution using heuristic search trees
+    # (WIP - not done)
+    ROOT_NODE = 0
+    root = createnode(ROOT_NODE)
+    children = [createnode(node) for node in get_closest_nodes(0, distance_matrix, n=2)]
+    
+    root.child += children 
+    root.traverse()  # prints full paths.
+
     # Format output as desired by course grader
     proved_opt=0
     output_data = f'{lowest_dist:.2f} {proved_opt}\n'
@@ -67,7 +151,7 @@ import sys
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1:
-        # file_location = "data/tsp_51_1"
+        #file_location = "data/tsp_51_1"
         file_location = sys.argv[1].strip()
         with open(file_location, 'r') as input_data_file:
             input_data = input_data_file.read()
