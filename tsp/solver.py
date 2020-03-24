@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from anytree import Node, RenderTree
 import math
 import numpy as np
 import random
@@ -10,6 +11,9 @@ import pandas as pd
 from collections import namedtuple
 from tqdm import tqdm
 
+
+def unique_l(l):
+    return list(set(l))
 
 def get_dist_matrix(input_data):
     lines = input_data.split('\n')
@@ -33,34 +37,12 @@ def greedy_salesman(distance_matrix, startnode=0):
 
 def get_closest_nodes(current_pt, dist_matrix, n, exclude=[]):
     dist_to_alternatives = dist_matrix[current_pt].copy()
-    dist_to_alternatives[exclude + [current_pt]] = np.inf
+    dist_to_alternatives[unique_l(exclude + [current_pt])] = np.inf
     neighbors_idx = np.argpartition(dist_to_alternatives, n)[:n]  # thanks https://stackoverflow.com/a/34226816/1870832
     return neighbors_idx
 
 
-class createnode:
-    """ thanks to https://stackoverflow.com/a/60779058/1870832"""
-    def __init__(self,nodeid):
-        self.nodeid=nodeid
-        self.child=[]
-
-    def __str__(self):
-        print(f"{self.nodeid}")
-
-    def traverse(self, path = None):
-        if path is None:
-            path = []
-        path.append(self.nodeid)
-        if len(self.child) == 0:
-            yield path
-            path.pop()
-        else:
-            for child in self.child:
-                yield from child.traverse(path)
-            path.pop()
-
-
-def heuristic_search_salesman(distance_matrix, startnode=0, n_closest=3, n_levels=2):
+def heuristic_search_salesman(distance_matrix, startnode=0, n_closest=3, n_levels=3):
     '''At each node, consider a few closest next steps, then a few from there, etc.
         - Choose immediate next step which is on the way to best outcome gamed out n steps forward
         - See for ref Sec 8.9 "Reinforcement Learning," by Sutton and Barto
@@ -76,40 +58,39 @@ def heuristic_search_salesman(distance_matrix, startnode=0, n_closest=3, n_level
     print(f"Starting Heuristic Search Salesman for n_closest={n_closest} and n_levels={n_levels}")
 
     # input validation
-    assert n_levels in (2,3), "please keep n_levels as either 2 or 3"
 
     visit_order = [startnode]
     for i in tqdm(range(distance_matrix.shape[0]-1)):  # i is the tour position we're deciding now
         current_pt = visit_order[-1]
 
         # From current point, create a tree gaming out paths moving forward
-        root = createnode(current_pt)
+        root = Node(str(current_pt))
 
-        ## first level of tree
-        root.child += [createnode(node) for node in get_closest_nodes(current_pt, 
-                                                                        distance_matrix,
-                                                                        n_closest, 
-                                                                        exclude=visit_order+[current_pt])]
-        ## second level of tree
-        for child in root.child:
-            exclude_list = visit_order + [root.nodeid] + [child.nodeid]
-            child.child += [createnode(node) for node in get_closest_nodes(child.nodeid, 
-                                                                            distance_matrix,
-                                                                            n_closest, 
-                                                                            exclude=exclude_list)]
+        candidates = get_closest_nodes(current_pt, distance_matrix, n_closest, exclude=visit_order)
+        nodes_by_tree_lvl = {k:[] for k in range(n_levels+1)}
+        nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]
 
-        # For all full root-leaf paths through the tree, select next step as first step along 
-        # shortest planned path
-        all_planned_paths = root.traverse()
+        for level in range(1, n_levels):
+            for candidate in nodes_by_tree_lvl[level-1]:
+                #print(f"calculating for level {level} and candidate {candidate}")
+                candidate_ancestors = [int(a.name) for a in candidate.ancestors]
+                exclude = unique_l(visit_order + candidate_ancestors)
+                next_candidates = get_closest_nodes(int(candidate.name), distance_matrix, n_closest, exclude=visit_order)
+                nodes_by_tree_lvl[level] = nodes_by_tree_lvl[level] + [Node(str(nc), parent=candidate) for nc in next_candidates]
 
+        # Now that the heuristic search tree is constructed, calculate full distance for each path,
+        # next step is first-step along shortest planned distance
+        #print(RenderTree(root))
         next_step = np.nan
         shortest_dist = np.inf
-        for p in all_planned_paths:
-            planned_dist = sum([distance_matrix[i,j] for i,j in zip(p[:-1], p[1:])])
-            if planned_dist < shortest_dist:
-                shortest_dist = planned_dist
-                next_step = p[1]
-        
+        for possible_path in root.leaves:  # (Node('/0/1/3'), Node('/0/1/4'), Node('/0/2/5'), Node('/0/2/6'))
+            nodes = [n.name for n in possible_path.ancestors] + [possible_path.name]
+            dist = sum(distance_matrix[int(i),int(j)] for i,j in zip(nodes[0:-1],nodes[1:]))
+            #print(f"distance for {nodes} is {dist}")
+            if dist < shortest_dist:
+                shortest_dist = dist
+                next_step = int(nodes[1])  # nodes[1] is second item in list, but first item is current-point
+
         visit_order.append(next_step)
 
     return visit_order
@@ -130,7 +111,7 @@ def solve_it(input_data, input_filename, n_starts=10):
     distance_matrix = get_dist_matrix(input_data)
 
     # Starting towards a better initial solution using heuristic search trees
-    tour = heuristic_search_salesman(distance_matrix, startnode=0, n_closest=3, n_levels=2)  # n_closest=1 would be original greedy (which is 506.36 on prob1)
+    tour = heuristic_search_salesman(distance_matrix, startnode=0, n_closest=2, n_levels=2)  # n_closest=1 would be original greedy (which is 506.36 on prob1)
     tour_dist = calc_tour_dist(tour, distance_matrix)
 
 
