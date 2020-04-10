@@ -10,6 +10,7 @@ from sklearn.metrics import pairwise_distances
 import subprocess
 import sys
 import pandas as pd
+from pprint import PrettyPrinter
 from collections import namedtuple
 from tqdm import tqdm
 
@@ -38,89 +39,6 @@ def get_closest_nodes(current_pt, dist_matrix, n, exclude=[], verbose=False):
     return neighbors_idx
 
 
-""" no longer used. superseded by heuristic_search_salesman (nlevels=1 makes that regular greedy)
-def greedy_salesman(distance_matrix, startnode=0):
-    '''Generate a tour by drawing edges to closest remaining point, for each point in succession'''
-    visit_order = [startnode]
-    for i in range(distance_matrix.shape[0]-1):
-        current_pt = visit_order[-1]
-        dist_to_alternatives = distance_matrix[current_pt]
-        dist_to_alternatives[visit_order] = np.inf  # can't select a point we've already visited
-        next_pt = np.argmin(dist_to_alternatives)   # greedy - pt with min dist among possible choices
-        visit_order.append(next_pt)
-    assert len(visit_order) == len(distance_matrix)
-    return visit_order
-"""
-
-### Trying out recursive way
-"""
-n_levels=3...
-0
-\
- 1
-  \
-   2   
-    \  
-     3
-     ok, let's remember length of path 0-1-2-3, and then...
-    - backtrack to 2, delete the \3 branch
-0
-\
- 1
-  \
-   2   
-    \  
-     4 (the closest node to 2, that is not in (0,1,3))
-"""
-# Start with greedy (n-levels arbitrary, n-closest=1 at each level)
-#distance_matrix
-#n_levels = 3
-# we are at node 0...
-
-"""
-def closest(matrix, i, path):
-    best_dist = float('inf')
-    best_n = -1
-    for n in range(len(matrix)):
-        if n not in path and matrix[i, n] < best_dist:
-            best_dist = matrix[i, n]
-            best_n = n
-    return [best_n]
-
-class TSP:
-    def __init__(self):
-        self.best_dist = float('inf')
-
-    def greedy_rec(distance, nodeid=0, path):
-        path.append(nodeid)
-        if len(path) == node_count:
-            # add distance from current node to start node
-            if distance < self.best_dist:
-                self.best_dist = distance
-                self.best_path = path.copy()
-        else: 
-            # next = find n (1) closest nodes not seen yet
-            next_ = closest(matrix, nodeid, path)
-            for i in next_:
-                greedy_rec(distance+neighbors[i], i, path)
-        path.pop()
-
-    def greedy():
-        for i in range(count):
-            greedy_salesman_rec(0, i, [])
-
-...
-    neighbors = distance_matrix[nodeid].copy()
-    seen1 = seen.union(set([nodeid]))
-    neighbors[list(seen)] = np.inf
-
-    neighbors[nodeid] = np.inf
-    closest = min(neighbors[nodeid])
-
-
-"""
-
-
 def heuristic_search_salesman(distance_matrix, 
                               startnode=0, 
                               n_closest=3, 
@@ -147,16 +65,18 @@ def heuristic_search_salesman(distance_matrix,
 
         # From current point, create a tree gaming out paths moving forward
         root = Node(str(current_pt))
-
+        
         # first level of tree for candidates for next-move from current point
         candidates = get_closest_nodes(current_pt, distance_matrix, n_closest, exclude=visit_order)
         nodes_by_tree_lvl = {k:[] for k in range(n_levels+1)}
-        nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]
+        nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]  # THIS ADDS TO TREE
 
         # loop, for each level, consider candidate nodes from each candidate node from previous level in search tree
+        pp = PrettyPrinter(indent=4)
         for level in range(1, n_levels):
             for candidate in nodes_by_tree_lvl[level-1]:
                 if verbose:
+                    pp.pprint(nodes_by_tree_lvl)
                     print('\n--------------------------------------------------------')
                     print(f"calculating for level {level} and candidate {candidate}")
                     print('--------------------------------------------------------')
@@ -169,14 +89,14 @@ def heuristic_search_salesman(distance_matrix,
                 next_candidates = get_closest_nodes(int(candidate.name), distance_matrix, n_closest, exclude=exclude)
                 if verbose:
                     print(f"next candidates: {next_candidates}")
-                    print(RenderTree(root))
+                    #print(RenderTree(root))
 
                 if debug:
                     input("Press Enter to continue...")
 
                 # Add new candidate nodes to next level of heuristic search tree
                 nodes_by_tree_lvl[level] = nodes_by_tree_lvl[level] + [Node(str(nc), parent=candidate) for nc in next_candidates]
-
+                print(RenderTree(root))
         # Now that the heuristic search tree is constructed, calculate full distance for each path,
         # next-step will be first-step along shortest planned path in search tree
         next_step = np.nan
