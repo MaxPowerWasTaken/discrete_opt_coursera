@@ -68,6 +68,7 @@ def heuristic_search_salesman(distance_matrix,
         
         # first level of tree for candidates for next-move from current point
         candidates = get_closest_nodes(current_pt, distance_matrix, n_closest, exclude=visit_order)
+        print(f"candidates for first decision: {candidates}")
         nodes_by_tree_lvl = {k:[] for k in range(n_levels+1)}
         nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]  # THIS ADDS TO TREE
 
@@ -75,26 +76,16 @@ def heuristic_search_salesman(distance_matrix,
         pp = PrettyPrinter(indent=4)
         for level in range(1, n_levels):
             for candidate in nodes_by_tree_lvl[level-1]:
-                #if verbose:
-                    #pp.pprint(nodes_by_tree_lvl)
-                    #print('\n--------------------------------------------------------')
-                #    print(f"calculating for level {level} and candidate {candidate}")
-                    #print('--------------------------------------------------------')
-                    #print(f"visited_already is: {visit_order}\n")
                 candidate_ancestors = [int(a.name) for a in candidate.ancestors]
                 exclude = unique_l(visit_order + candidate_ancestors)
-                #if verbose:
-                #    print(f"exclude-list for next candidates is: {exclude}")
 
                 next_candidates = get_closest_nodes(int(candidate.name), distance_matrix, n_closest, exclude=exclude)
                 if verbose:
-                    print(f"next candidates: {next_candidates}")
-                    #print(RenderTree(root))
-                #if debug:
-                    #input("Press Enter to continue...")
-                # Add new candidate nodes to next level of heuristic search tree
+                    print(f"next candidates for {candidate}: {next_candidates}")
                 nodes_by_tree_lvl[level] = nodes_by_tree_lvl[level] + [Node(str(nc), parent=candidate) for nc in next_candidates]
-                #print(RenderTree(root))
+                #if debug:
+                #    print(RenderTree(root))
+
         # Now that the heuristic search tree is constructed, calculate full distance for each path,
         # next-step will be first-step along shortest planned path in search tree
         next_step = np.nan
@@ -102,30 +93,40 @@ def heuristic_search_salesman(distance_matrix,
         for possible_path in root.leaves:  #root.leaves looks like: (Node('/0/1/3'), Node('/0/1/4'), Node('/0/2/5'), Node('/0/2/6'))
             nodes = [n.name for n in possible_path.ancestors] + [possible_path.name]
             dist = sum(distance_matrix[int(i),int(j)] for i,j in zip(nodes[0:-1],nodes[1:]))
-            #print(nodes)
-            #print(f"len of visit-order + nodes is {len(visit_order) + len(nodes)-1}, compared to {distance_matrix.shape[0]}")
 
             # nodes includes prospective candidate paths, but also current node which is last item in visit order
             if len(visit_order) + len(nodes)-1 == distance_matrix.shape[0]:
-                print(f"adding {distance_matrix[int(nodes[-1]), startnode]} as dist from {nodes[-1]} back to {startnode} to path {nodes}")
                 distance_back_to_start = distance_matrix[startnode, int(nodes[-1])]
                 dist = dist + distance_back_to_start
-                if debug:
-                    input("Press Enter to continue...")
-            
-            # HERE IS WHERE I SHOULD CONDITIONALLY UPDATE DIST TO INCLUDE LAST BACK TO FIRST (IF PATH IS LEN OF ALL POINTS)
-
-
-            #if verbose:
-            #    print(f"distance for {nodes} is {dist}")
+                
+            #if debug:
+            #    input("Press Enter to continue...")
+            pd.DataFrame(distance_matrix).to_csv('distance_matrix.csv')
+            if verbose:
+                print(f"distance for {nodes} is {dist}")
+                #print(f"distance is {dist} for:\n")
+                #print(RenderTree(possible_path))
             if dist < shortest_dist:
                 shortest_dist = dist
                 next_step = int(nodes[1])  # nodes[1] is second item in list, but first item is current-point. so nodes[1] is next step
 
         #print(f"next_step is: {next_step}")
         visit_order.append(next_step)
+        print(f"{visit_order}, cumulative distance: {sum([distance_matrix[i,j] for i,j in zip(visit_order[:-1], visit_order[1:])])}")
+        input("Press Enter to continue...")
 
     return visit_order
+
+"""
+considering:
+0/3/55/17 - distance 40
+0/2/41/19 - distance 30
+
+
+
+
+"""
+
 
 
 def calc_tour_dist(tour_order, dist_matrix):
@@ -165,7 +166,6 @@ def solve_it(input_data,
                                      verbose=verbose,
                                      debug=debug)  
     tour_dist = calc_tour_dist(tour, distance_matrix)
-
 
     """ Code below for trying heuristic search with restarts.
         Setting this aside for now while debugging heuristic search from single start
