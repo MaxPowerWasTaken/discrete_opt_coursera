@@ -11,7 +11,6 @@ import subprocess
 import sys
 import pandas as pd
 from pprint import PrettyPrinter
-from collections import namedtuple
 from tqdm import tqdm
 
 
@@ -20,113 +19,21 @@ def unique_l(l):
 
 
 def get_dist_matrix(input_data):
+    """input_data comes in as raw multiline text string"""
     lines = input_data.split('\n')
     xypairs = [i.split() for i in lines[1:-1]]  # first line is num-points, last line is blank
     dist_matrix = pairwise_distances(xypairs, metric='euclidean')
     return dist_matrix
 
-
 def get_closest_nodes(current_pt, dist_matrix, n, exclude=[], verbose=False):
     dist_to_alternatives = dist_matrix[current_pt].copy()
+
+    # don't consider as neighbors any points already visited
     dist_to_alternatives[unique_l(exclude + [current_pt])] = np.inf
+    n_valid = min(n, np.isfinite(dist_to_alternatives).sum())
 
-    n_valid = min(n, np.isfinite(dist_to_alternatives).sum())  # dont return any .infs from exclude-list
-    neighbors_idx = np.argpartition(dist_to_alternatives, n_valid)[:n_valid]  # thanks https://stackoverflow.com/a/34226816/1870832
-    if verbose:
-        print(f"exclusions: {exclude}")
-        print(f"dist_to_alternatives are: {', '.join([str(d) for d in dist_to_alternatives])}")
-        print(f"neighbors_idx: {neighbors_idx}")
+    neighbors_idx = np.argpartition(dist_to_alternatives, n_valid)[:n_valid]  # argpartition like an argmin to return n smallest
     return neighbors_idx
-
-
-def heuristic_search_salesman(distance_matrix, 
-                              startnode=0, 
-                              n_closest=3, 
-                              n_levels=3, 
-                              verbose=False, 
-                              debug=False):
-    '''At each node, consider a few closest next steps, then a few from there, etc.
-        - Choose immediate next step which is on the way to best outcome gamed out n steps forward
-        - See for ref Sec 8.9 "Reinforcement Learning," by Sutton and Barto
-
-    params
-    ------
-    distance_matrix: self-explanatory
-    startnode:       node to start the tour at 
-    n_closest:       At each node, consider for next step this many (closest) nodes
-    n_levels:        BASICALLY HARDCODED FOR NOW Plan this many levels/steps ahead before choosing next step
-    drop_worst:      (NOT IMPLEMENTED) If True, do not consider in plan branches off worst node considered at each level 
-    '''
-    print(f"Starting Heuristic Search Salesman for n_levels={n_levels} & n_closest={n_closest}")
-
-    visit_order = [startnode]
-    for i in tqdm(range(distance_matrix.shape[0]-1)):  # i is the tour position we're deciding now
-        current_pt = visit_order[-1]
-
-        # From current point, create a tree gaming out paths moving forward
-        root = Node(str(current_pt))
-        
-        # first level of tree for candidates for next-move from current point
-        candidates = get_closest_nodes(current_pt, distance_matrix, n_closest, exclude=visit_order)
-        print(f"candidates for first decision: {candidates}")
-        nodes_by_tree_lvl = {k:[] for k in range(n_levels+1)}
-        nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]  # THIS ADDS TO TREE
-
-        # loop, for each level, consider candidate nodes from each candidate node from previous level in search tree
-        pp = PrettyPrinter(indent=4)
-        for level in range(1, n_levels):
-            for candidate in nodes_by_tree_lvl[level-1]:
-                candidate_ancestors = [int(a.name) for a in candidate.ancestors]
-                exclude = unique_l(visit_order + candidate_ancestors)
-
-                next_candidates = get_closest_nodes(int(candidate.name), distance_matrix, n_closest, exclude=exclude)
-                if verbose:
-                    print(f"next candidates for {candidate}: {next_candidates}")
-                nodes_by_tree_lvl[level] = nodes_by_tree_lvl[level] + [Node(str(nc), parent=candidate) for nc in next_candidates]
-                #if debug:
-                #    print(RenderTree(root))
-
-        # Now that the heuristic search tree is constructed, calculate full distance for each path,
-        # next-step will be first-step along shortest planned path in search tree
-        next_step = np.nan
-        shortest_dist = np.inf
-        for possible_path in root.leaves:  #root.leaves looks like: (Node('/0/1/3'), Node('/0/1/4'), Node('/0/2/5'), Node('/0/2/6'))
-            nodes = [n.name for n in possible_path.ancestors] + [possible_path.name]
-            dist = sum(distance_matrix[int(i),int(j)] for i,j in zip(nodes[0:-1],nodes[1:]))
-
-            # nodes includes prospective candidate paths, but also current node which is last item in visit order
-            if len(visit_order) + len(nodes)-1 == distance_matrix.shape[0]:
-                distance_back_to_start = distance_matrix[startnode, int(nodes[-1])]
-                dist = dist + distance_back_to_start
-                
-            #if debug:
-            #    input("Press Enter to continue...")
-            pd.DataFrame(distance_matrix).to_csv('distance_matrix.csv')
-            if verbose:
-                print(f"distance for {nodes} is {dist}")
-                #print(f"distance is {dist} for:\n")
-                #print(RenderTree(possible_path))
-            if dist < shortest_dist:
-                shortest_dist = dist
-                next_step = int(nodes[1])  # nodes[1] is second item in list, but first item is current-point. so nodes[1] is next step
-
-        #print(f"next_step is: {next_step}")
-        visit_order.append(next_step)
-        print(f"{visit_order}, cumulative distance: {sum([distance_matrix[i,j] for i,j in zip(visit_order[:-1], visit_order[1:])])}")
-        input("Press Enter to continue...")
-
-    return visit_order
-
-"""
-considering:
-0/3/55/17 - distance 40
-0/2/41/19 - distance 30
-
-
-
-
-"""
-
 
 
 def calc_tour_dist(tour_order, dist_matrix):
@@ -138,15 +45,80 @@ def calc_tour_dist(tour_order, dist_matrix):
     return total_dist
 
 
+def heuristic_search_salesman(distance_matrix, 
+                              startnode=0, 
+                              breadth=3, 
+                              depth=3, 
+                              verbose=False, 
+                              debug=False):
+    ''' Build out a heuristic search tree considering possible paths forward. 
+        Take first step along shortest planned path.
+        See for ref Sec 8.9 "Reinforcement Learning," by Sutton and Barto: 
+        http://www.andrew.cmu.edu/course/10-703/textbook/BartoSutton.pdf
 
+        (Note: if depth or breadth is 1, this reduces to regular greedy search)
 
+    params
+    ------
+    distance_matrix: square matrix of distance from each point to each other point
+    startnode:       node the TSP starts from 
+    breadth:         breadth of the search tree (how many next-steps considered from each step)
+    depth:           depth of the search tree (how many steps forward to plan)
+    '''
+    print(f"Starting Heuristic Search Salesman for depth={depth} & breadth={breadth}")
 
+    visit_order = [startnode]
+    for i in tqdm(range(distance_matrix.shape[0]-1)):  # i is the tour position we're deciding now
+        current_pt = visit_order[-1]
+
+        # From current point, create a tree gaming out paths moving forward
+        root = Node(str(current_pt))
+        
+        # first level of planning tree: candidates for next-move from current point
+        candidates = get_closest_nodes(current_pt, distance_matrix, breadth, exclude=visit_order)
+        nodes_by_tree_lvl = {k:[] for k in range(depth+1)}
+        nodes_by_tree_lvl[0] = [Node(str(c), parent=root) for c in candidates]
+
+        # fill out rest of planning tree in a loop
+        for level in range(1, depth):
+            for candidate in nodes_by_tree_lvl[level-1]:
+                candidate_ancestors = [int(a.name) for a in candidate.ancestors]
+                exclude = unique_l(visit_order + candidate_ancestors)
+                next_candidates = get_closest_nodes(int(candidate.name), distance_matrix, breadth, exclude=exclude)
+                nodes_by_tree_lvl[level] = nodes_by_tree_lvl[level] + [Node(str(nc), parent=candidate) for nc in next_candidates]
+
+        # Now that the heuristic search tree is constructed, calculate full distance for each potential path,
+        # next-step will be first-step along shortest planned path
+        next_step = np.nan
+        shortest_dist = np.inf
+        for possible_path in root.leaves:
+            nodes = [n.name for n in possible_path.ancestors] + [possible_path.name]
+            dist = sum(distance_matrix[int(i),int(j)] for i,j in zip(nodes[0:-1],nodes[1:]))
+
+            # if nodes already visited + depth of planning tree extends to all nodes, need
+            # to include distance back to start to complete circuit in path's planned dist
+            if len(visit_order) + len(nodes)-1 == distance_matrix.shape[0]:
+                distance_back_to_start = distance_matrix[startnode, int(nodes[-1])]
+                dist = dist + distance_back_to_start
+                
+            if verbose:
+                print(f"distance for {nodes} is {dist}")
+            if dist < shortest_dist:
+                shortest_dist = dist
+                next_step = int(nodes[1])  # nodes[0] is current-point. so nodes[1] is next step
+
+        visit_order.append(next_step)
+        if verbose:
+            print(f"{visit_order}, cumulative distance: {sum([distance_matrix[i,j] for i,j in zip(visit_order[:-1], visit_order[1:])])}")
+        if debug:
+            input("Press Enter to continue...")
+
+    return visit_order
 
 
 def solve_it(input_data, 
-             input_filename, 
-             n_levels=3, 
-             n_closest=3, 
+             depth=3, 
+             breadth=3, 
              verbose=False, 
              debug=False):
     """ Run python solver.py -h from shell for explanations of parameters """
@@ -157,30 +129,15 @@ def solve_it(input_data,
         print("Saving Distance-Matrix for distances among all nodes to each other to distance_matrix.csv\n")
         pd.DataFrame(distance_matrix, columns=[[str(i) for i in range(len(distance_matrix))]]).to_csv('distance_matrix.csv')
 
-    # Conduct heuristic search
+    # Conduct heuristic search. Breadth or Depth of 1 reduces to regular greedy search
     start = 0
     tour = heuristic_search_salesman(distance_matrix, 
                                      startnode=start, 
-                                     n_closest=n_closest, # n_closest=1 would be original greedy (which is 506.36 on data/tsp_51_1) 
-                                     n_levels=n_levels, 
+                                     breadth=breadth,
+                                     depth=depth, 
                                      verbose=verbose,
                                      debug=debug)  
     tour_dist = calc_tour_dist(tour, distance_matrix)
-
-    """ Code below for trying heuristic search with restarts.
-        Setting this aside for now while debugging heuristic search from single start
-
-    best_tour = []
-    lowest_dist = np.inf
-    for start in (0,2,5,17,21,35,44):
-        tour = heuristic_search_salesman(distance_matrix, startnode=start, n_closest=n_closest, n_levels=n_levels, verbose=verbose)  # n_closest=1 would be original greedy (which is 506.36 on prob1)
-        tour_dist = calc_tour_dist(tour, distance_matrix)
-        print(f"for start at {start}, tour distance = {tour_dist}")
-
-        if tour_dist < lowest_dist:
-            best_tour = tour
-            lowest_dist = tour_dist
-    """
 
     # Format output as desired by course grader
     proved_opt=0
@@ -189,37 +146,26 @@ def solve_it(input_data,
     return output_data
 
 
-import sys
-
 if __name__ == '__main__':
     # CLI Argument Parser
     parser = argparse.ArgumentParser()
     parser.add_argument('datafile', type=str, help = "path to data file. required")
-    parser.add_argument('-l', '--levels', type=int, default='3', 
+    parser.add_argument('-d', '--depth', type=int, default='3', 
                         help='Number of Levels to plan forward in heuristic search tree. 1 means regular greedy search')
-    parser.add_argument('-c', '--nclose', type=int, default='3', 
+    parser.add_argument('-b', '--breadth', type=int, default='3', 
                         help='Number of closest nodes to consider at each level of the heuristic search tree')
     parser.add_argument('-v', '--verbose', action="store_true", help="Show extra print statements")
-    parser.add_argument('-d', '--debug', action="store_true", 
+    parser.add_argument('--debug', action="store_true", 
                         help="Pause execution until keypress after each next-step selection. Sets verbose to True as well")
 
     # Parse CLI args and call solver 
     args = parser.parse_args()
-    file_location = args.datafile
-    n_levels = args.levels
-    n_closest = args.nclose
-    verbose = args.verbose
-    debug = args.debug
-    if debug:
-        verbose=True  #
 
-    # file_location = 'data/tsp_51_1'
-    with open(file_location, 'r') as input_data_file:
+    with open(args.datafile, 'r') as input_data_file:
         input_data = input_data_file.read()
 
-    print(solve_it(input_data, 
-                  file_location, 
-                  n_levels=n_levels, 
-                  n_closest=n_closest,
-                  verbose=verbose,
-                  debug=debug))
+    print(solve_it(input_data,  
+                  depth=args.depth, 
+                  breadth=args.breadth,
+                  verbose=max(args.verbose,args.debug),  # no point calling debug w/o verbose
+                  debug=args.debug))
