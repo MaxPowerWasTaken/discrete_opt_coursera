@@ -10,6 +10,7 @@ import random
 from sklearn.metrics import pairwise_distances
 import subprocess
 import sys
+from numba import jit
 import pandas as pd
 from pprint import PrettyPrinter
 from tqdm import tqdm
@@ -84,6 +85,7 @@ def calc_tour_dist(tour_order, dist_matrix):
     return total_dist
 
 
+@jit(nopython=True)
 def greedy_salesman(distance_matrix, startnode=0):
     """Generate a tour by drawing edges to closest remaining point, for each point in succession"""
     dm = distance_matrix.copy()
@@ -92,7 +94,7 @@ def greedy_salesman(distance_matrix, startnode=0):
         current_pt = visit_order[-1]
         dist_to_alternatives = dm[current_pt]
         # dont wanna select a point we've already visited
-        dist_to_alternatives[visit_order] = np.inf
+        dist_to_alternatives[np.array(visit_order)] = np.inf
         # greedy - pt with min dist among possible choices
         next_pt = np.argmin(dist_to_alternatives)
         visit_order.append(next_pt)
@@ -100,6 +102,7 @@ def greedy_salesman(distance_matrix, startnode=0):
     return visit_order
 
 
+@jit(nopython=True)
 def dist_around(tour, nodeidx, dist_matrix):
 
     # next node for last node is first elem (idx=0)
@@ -111,9 +114,11 @@ def dist_around(tour, nodeidx, dist_matrix):
     return d1 + d2
 
 
+@jit(nopython=True)
 def two_opt(tour, dist_matrix, verbose=False):
 
-    for i, swap_option in tqdm(enumerate(combinations(range(len(tour)), 2))):
+    # for i, swap_option in tqdm(enumerate(combinations(range(len(tour)), 2))):  #tqdm doesnt work with numba
+    for swap_option in combinations(range(len(tour)), 2):
         idx1, idx2 = swap_option
 
         tour2 = tour.copy()
@@ -130,13 +135,13 @@ def two_opt(tour, dist_matrix, verbose=False):
         dist_improvement = old_dist - new_dist
 
         if dist_improvement > 0:
-            if verbose:
-                msg = f"After {i} swap_options, swapped positions {idx1} & {idx2} for improvement of {dist_improvement}"
-                print(msg)
+            # if verbose:
+            # msg = f"After {i} swap_options, swapped positions {idx1} & {idx2} for improvement of {dist_improvement}"
+            # print(msg)
             return (tour2, dist_improvement)
 
-    if verbose:
-        print(f"no 2opt combinations improved, hit local optimum")
+    # if verbose:
+    # print(f"no 2opt combinations improved, hit local optimum")
     return None
 
 
