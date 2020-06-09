@@ -18,13 +18,16 @@ from tqdm import tqdm
 
 def solve_it(input_data):
     """ call julia solver """
+    print("writing input data to for_jl_solver")
     with open("data/for_jl_solver", "w") as f:
         f.writelines(input_data)
 
     # subprocess.run("julia tsp.jl", shell=True)
-    cmd_str = "julia tsp.jl"
+    start = pd.Timestamp.utcnow()
+    cmd_str = "julia tsp.jl data/for_jl_solver"
     sh_result = subprocess.run(cmd_str, shell=True, stdout=subprocess.PIPE)
     sh_output = sh_result.stdout.decode("UTF-8")
+    print(f"Finished running tsp.jl in {pd.Timestamp.utcnow() - start}")
 
     return sh_output
 
