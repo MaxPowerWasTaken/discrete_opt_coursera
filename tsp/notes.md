@@ -374,4 +374,75 @@ Other tips for this assignment
 NOTES ON LOCAL-SEARCH / TSP BLOG...
 - greedy starting at node0 got 3/10 for each: 15/60 (memory error on prob6)
 - trying greedy but starting at every different node increases score to 7/10 on one of them - 19/60. basically swing and a miss 
-- 
+- tried heuristic_search, but interestingly original greedy gets dist 506 on prob1, heuristic-search trying 3 neighbors and 2 levels forward
+    is much worse on prob1 - 574.
+    - weird. even going out to like 8 levels, its always worse on prob1 than greedy salesman (rerunning with levels=1
+        - must be BUG right? try to track down
+
+NOTES ON TWILIO-LAMBDA
+- seems to me that cloudwatch logs show up 1-2 minute delayed on main lambda 'monitoring' tab page, where cloudwatch logs presented with metrics. when I went to 'cloudwatch > log groups > [my lambda service]` I got to a page with just cloudwwatch log links and they seemed to appear immediately when I invoked the lambda. big difference.
+- permissions errors. this was progress when I finally hit 
+- when hit aws permission error, I wanted to do this in as standard a way as possible. so I:
+    - did not modify the lambdas execution role directly
+    - created a new role, imported standard policy PollyFullAccess
+        - hm now how do I add this second role to my lambda? since it already has simple-microservice-permissions role...
+        - hm couldn't figure that out, but was able to:
+            - Policy AmazonPollyFullAccess has been attached for the aws_simple_microservice_permissions.
+                - this seems suboptimal. what if my next lambda I want to have simple_ms_permissions without polly access? oh well. moving on for now.
+                - FINALLY got text message back.    
+            - then needed to add s3 full permissions as well
+            - then ran into, even though lambda has s3 permissions, and even though s3 bucket is set to public, items
+              in that buckets are still not public by default. to set them to be public by default need to set a 
+              bucket policy: https://stackoverflow.com/questions/19176926/how-to-make-all-objects-in-aws-s3-bucket-public-by-default
+                - ^ this worked. nice
+    - ok now hitting that lambda can't import twilio. need to add twilio python package to lambda environment
+        - options seem to be:
+            - creating a venv locally, then zipping it up (along w/ my lambda func code?) and uploading that zip (where?)
+            - layers (create-a-layer page seemingly not letting me choose a library?)
+            - someone on reddit suggests opening cloud9 ide, navigating to your lambda, and pip installing in integrated terminal there.
+                - sounds easiest.
+                    - hm but then this page lists a bunch of steps
+            - new thinking - zip a venv and upload as lambda layer. but how exactly?
+                - this seems straightforward: https://stackoverflow.com/a/55696082/1870832
+                    - created a venv, dropped it in tmp/python/, then from tmp/ zipped (-r) python/... and uploaded via 'create layer'
+                        - then from lambda configure added my newly created layer.
+                        - ...but now I can't find my lambda-handler code? and it says my api gateway is broken? wtf????
+                            - hm so think my lambda got a new ARN after adding the layer, which broke the api gateway
+                                so I deleted the old one (which said it wasn't linked to this lambda anymore) and added a new one...
+                                    - hm, next time I texted, nothing came back, and nothing showed up in cloudwatch, so something
+                                      going wrong either on twilio webhook or in api gateway
+                                    - ...and what are these four different receive-sms-and-speak-it-back 'integrations'???
+                                    - ok fixed. now I can at least error while in cloudwatch again
+                                        - issue was I had lambda-func name in my url/webhook in twilio.
+                                            - in aws console I was being shown [api-gateway]/[lambda-func-name]/text
+                                              but that's just a ref to the trigger I guess, what I needed for the twilio
+                                              webhook was just [api-gateway-url]/text(route)
+                                              - hm but now lambda console is showing me "An error occurred while listing api-gateway relations: null" and doesn't show any api gateway trigger. weird...
+                                              - hm now texting twilio number triggers lambda/cloudwatch but the printed 'event'
+                                                has no 'body' where the twilio message used to be
+                                              - so anuvrat fixed it, by creating a new api-gateway trigger with a route 
+                                                of the lambda function name, like my lambda console was complaining about not 
+                                                having. he had no idea why it was needed or worked, and suggested using 
+                                                zappa in the future to avoid worrying about such weirdness.
+                                                    - also it seems that only worked when that route was configured for post
+                                                      requests, not for 'any', which also didn't make sense to either of us.
+
+
+
+TODO tonight, now.
+    - post on codementor - linking api gateway to lambda
+    - apply for unemployment - codementor revenue minus spend
+    - back to work.
+
+# Approaches:
+# 1) calculate full neighborhood, all possible two swaps, then calculate all full tour distances, select lowest
+    # this seems like it would take a lot of computation per move. much more than necessary.
+# 2) calculate longest edge, make that swap
+    # ok this swap is not reliably  an improvement
+# 3) happy middle ground? 
+#   # get n largest edges (param neighborhood_size), calc distances of each of those, try each one in turn
+#     (largest first) until find a swap that improves solution
+#    - when none of neighbors are improvements, i've hit a local maximum and can:
+#       - expand neighborhood size (e.g. all possible 2swaps), or
+#       - start trying 3swaps
+#       - randomly perturb solution, try again.
